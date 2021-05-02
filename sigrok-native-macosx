@@ -1,0 +1,160 @@
+#!/bin/sh
+##
+## This file is part of the sigrok-util project.
+##
+## Copyright (C) 2015 Uwe Hermann <uwe@hermann-uwe.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##
+## This program is distributed in the hope that it will be useful,
+## but WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+## GNU General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with this program; if not, see <http://www.gnu.org/licenses/>.
+##
+
+# set -e
+
+[ -z "${CLEAN_SOURCE+x}" ] || echo "Clean Source Directories"
+[ -z "${CLEAN_BUILD+x}" ] || echo "Clean Build Directories"
+
+NO_RECONFIGURE=1
+
+# The path where the compiled packages will be installed.
+PREFIX=$HOME/Applications/sigrok
+
+# The path where to download files to and where to build packages.
+BUILDDIR="${BUILDDIR:=`pwd`}"
+
+# The path where the libsigrok Python bindings will be installed.
+PYPATH=$PREFIX/lib/python2.7/site-packages
+
+# Edit this to control verbose build output.
+# V="V=1 VERBOSE=1"
+
+# Edit this to enable/disable/modify parallel compiles.
+PARALLEL="-j "`sysctl -n hw.ncpu`
+
+# Uncomment the following lines to build with clang and run scan-build.
+# export CC=llvm-gcc
+# export CXX=llvm-g++
+# SB="scan-build -k -v"
+
+# Uncomment the following lines to build with gcc/g++.
+export CC=gcc
+export CXX=g++
+
+# We use Qt 5.5 in order to remain compatible with more versions of Mac OS X.
+QTVER=qt@5.5
+
+# Path to Qt5 binaries (needed for cmake to find the Qt5 libs).
+# export PATH="$(brew --prefix $QTVER)/bin:$PATH"
+
+# You usually don't need to change anything below this line.
+
+# -----------------------------------------------------------------------------
+
+# PKG_CONFIG_PATH will need to point to pkg-config files of Homebrew's
+# keg-only formulae.
+P="$PREFIX/lib/pkgconfig"
+# for FORMULA in libffi python@2 python@3 "$QTVER"; do
+for FORMULA in libffi ; do
+    P="$P:$(brew --prefix "$FORMULA")/lib/pkgconfig"
+done
+
+# Extra options to pass to configure.
+C="$C --prefix=$PREFIX"
+
+# Remove build directory contents (if any) and create a new build dir.
+# rm -rf $BUILDDIR
+# mkdir $BUILDDIR
+# cd $BUILDDIR
+
+GIT_CLONE="git clone --depth=1"
+GIT_PULL="git pull --ff-only"
+
+REPO_BASE="git://sigrok.org"
+
+# -----------------------------------------------------------------------------
+
+function sigrok_build_project {
+    PRJ=$1
+
+    PRJ_SRC_DIR=$BUILDDIR/$PRJ
+    PRJ_BUILD_DIR=$BUILDDIR/$PRJ/build
+
+    # Remove source Directory if requested.
+    [ -z ${CLEAN_SOURCE+x} ] || rm -f $PRJ_SRC_DIR
+
+    # Clone Repository if it doesn't exist
+    [ -d $PRJ_SRC_DIR ] || ( cd $BUILDDIR && $GIT_CLONE $REPO_BASE/$PRJ )
+
+    # Update Repository.
+    [ -d $PRJ_SRC_DIR ] && ( cd $PRJ_SRC_DIR && $GIT_PULL )
+
+    # Remove Build Directory
+    [ -z ${CLEAN_BUILD+x} ] || rm -rf $PRJ_BUILD_DIR
+
+    # Create Build Directory if not present already
+    [ -d $PRJ_BUILD_DIR ] || mkdir -p $PRJ_BUILD_DIR
+
+    echo "Run $PRJ_SRC_DIR/autogen.sh"
+    if ! [ -x $PRJ_SRC_DIR/configure ] \
+      || ( [ -x $PRJ_SRC_DIR/configure ] && [ -z ${NO_RECONFIGURE+x} ] ) ; then
+        cd $PRJ_SRC_DIR && $PRJ_SRC_DIR/autogen.sh
+    fi
+
+    echo "Run $PRJ_SRC_DIR/configure $C"
+    if ! [ -f $PRJ_BUILD_DIR/Makefile ] \
+      || ( [ -f $PRJ_BUILD_DIR/Makefile ] && [ -z ${NO_RECONFIGURE+x} ] ) ; then
+        cd $PRJ_BUILD_DIR && PKG_CONFIG_PATH=$P $PRJ_SRC_DIR/configure $C ;
+    fi
+
+    echo "Run PYTHONPATH=$PYPATH $SB make $PARALLEL $V"
+    [ -d $PRJ_BUILD_DIR ] && (
+        PYTHONPATH=$PYPATH $SB make $PARALLEL $V ;
+        make install $V
+    )
+
+    shift
+    while [ -n "$*" ] ; do
+        cd $PRJ_BUILD_DIR && $SB make $1 $V
+        shift
+    done
+}
+
+
+# libserialport
+sigrok_build_project libserialport
+
+# libsigrok
+sigrok_build_project libsigrok check
+
+# libsigrokdecode
+sigrok_build_project libsigrokdecode check
+
+# sigrok-firmware
+sigrok_build_project sigrok-firmware
+
+# sigrok-firmware-fx2lafw
+sigrok_build_project sigrok-firmware-fx2lafw
+
+# sigrok-cli
+sigrok_build_project sigrok-cli
+
+# # PulseView
+# $GIT_CLONE $REPO_BASE/pulseview
+# cd pulseview
+# mkdir build
+# cd build
+# PKG_CONFIG_PATH=$P $SB cmake -DCMAKE_INSTALL_PREFIX:PATH=$PREFIX -DDISABLE_WERROR=y -DENABLE_TESTS=y ..
+# $SB make $PARALLEL $V
+# make install $V
+# $SB make test $V
+# cd ../..
+# 
