@@ -1,0 +1,21 @@
+[submodule "libserialport"]
+	path = libserialport
+	url = git://sigrok.org/libserialport
+[submodule "libsigrok"]
+	path = libsigrok
+	url = git://sigrok.org/libsigrok
+[submodule "libsigrokdecode"]
+	path = libsigrokdecode
+	url = git://sigrok.org/libsigrokdecode
+[submodule "sigrok-firmware"]
+	path = sigrok-firmware
+	url = git://sigrok.org/sigrok-firmware
+[submodule "sigrok-firmware-fx2lafw"]
+	path = sigrok-firmware-fx2lafw
+	url = git://sigrok.org/sigrok-firmware-fx2lafw
+[submodule "sigrok-cli"]
+	path = sigrok-cli
+	url = git://sigrok.org/sigrok-cli
+[submodule "pulseview"]
+	path = pulseview
+	url = git://sigrok.org/pulseview
